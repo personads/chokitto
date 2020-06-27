@@ -195,7 +195,6 @@ class Clipping:
 					position_strs.append('Page %d' % self.page[0])
 				# if page range
 				else:
-					print(self.page)
 					position_strs.append('Pages %d-%d' % self.page)
 			if self.location:
 				# reset position string if location is preferred
