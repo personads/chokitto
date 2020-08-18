@@ -47,11 +47,9 @@ class Document:
 		del_idcs = set()
 		# iterate over all clippings and find overlapping entries
 		for clip_idx, clipping in enumerate(clippings):
-			# skip clip if it was previously merged
-			if clip_idx in del_idcs:
-				continue
 			clip_start, clip_end = clipping.get_position(prefer_location=True, as_type=int)
 			# initialize merged clipping as current one
+			merged = False
 			merged_clipping = copy.deepcopy(clipping)
 			# perform lookahead
 			for next_idx in range(clip_idx + 1, len(clippings)):
@@ -69,21 +67,21 @@ class Document:
 					# add current and merged indices to deletion queue
 					del_idcs.add(clip_idx)
 					del_idcs.add(next_idx)
+					merged = True
 			# add merged clipping to document
-			if clip_idx in del_idcs:
+			if merged:
 				self.add_clipping(merged_clipping)
 		
 		# rebuild clippings list and remove merged entries
 		new_clippings = []
 		new_type_idx_map = defaultdict(list)
-		new_clip_idx = 0
 		for clip_idx, clipping in enumerate(self.clippings):
 			# skip old clippings which were merged
 			if clip_idx in del_idcs:
 				continue
 			new_clippings.append(clipping)
-			new_type_idx_map[clipping.clip_type].append(new_clip_idx)
-			new_clip_idx += 1
+			new_type_idx_map[clipping.clip_type].append(len(new_clippings)-1)
+
 		self.clippings = new_clippings
 		self._type_idx_map = new_type_idx_map
 
@@ -92,21 +90,6 @@ class Document:
 			if not clipping.is_merged():
 				continue
 			clipping.deduplicate()
-
-	def to_markdown(self, heading_level='', exclude_datetime=False):
-		# create title '# TITLE'
-		res = '%s# %s\n\n' % (heading_level, self.title)
-
-		# add author if available
-		res += '%s\n\n' % self.author if self.author else ''
-
-		for clip_type in sorted(self.get_clipping_types(), ):
-			# add type title
-			res += '%s## %s\n\n' % (heading_level, ' + '.join([ct.title() + 's' for ct in clip_type.split('+')]))
-			# iterate over clippings sorted by position
-			for clipping in sorted(self.get_clippings(clip_type)):
-				res += clipping.to_markdown(heading_level, exclude_datetime)
-		return res
 
 
 class Clipping:
@@ -126,10 +109,34 @@ class Clipping:
 		return self.get_position(prefer_location=True, as_type=int)[0] < other.get_position(prefer_location=True, as_type=int)[0]
 
 	def subsumes(self, other):
-		assert isinstance(other, Clipping), "%s cannot subsume and %s." % (self, other)
+		assert isinstance(other, Clipping), "%s cannot subsume %s." % (self, other)
+		subsumes = False
+
+		# check whether the range of this clipping subsumes the other
 		position = self.get_position(prefer_location=True, as_type=int)
 		other_position = other.get_position(prefer_location=True, as_type=int)
-		return (position[0] <= other_position[0]) and (position[1] >= other_position[1])
+		subsumes = (position[0] <= other_position[0]) and (position[1] >= other_position[1])
+
+		# check if this clipping subsumes the type of the other
+		clip_types = set(self.clip_type.split('+'))
+		other_clip_types = set(other.clip_type.split('+'))
+		if len(clip_types & other_clip_types) > 0:
+			subsumes_content = True
+			# if this clipping is merged, compare each content
+			if self.is_merged():
+				for content in self.content:
+					# iterate over contents of other clipping
+					other_contents = other.content if other.is_merged() else [other]
+					for other_content in other_contents:
+						# check for subsumption on each pair
+						subsumes_content = subsumes_content and content.subsumes(other_content)
+			# if this clipping is not merged, compare contents directly
+			else:
+				subsumes_content = self.content in other.content
+			# this clipping subsumes the other iff it subsumes both range and content of the other
+			subsumes = subsumes and subsumes_content
+
+		return subsumes
 
 	def merge(self, other):
 		assert isinstance(other, Clipping), "Cannot merge %s and %s." % (self, other)
@@ -179,7 +186,7 @@ class Clipping:
 		if self.location:
 			self.location = (min([c.location[0] for c in self.content]), max([c.location[0] for c in self.content]))
 		# reduce list to single item if only one entry is left
-		self.content = self.content[0] if len(self.content) == 1 else self.content
+		self.content = self.content[0].content if len(self.content) == 1 else self.content
 
 	def is_merged(self):
 		return type(self.content) is list
@@ -218,32 +225,4 @@ class Clipping:
 				else:
 					position += tuple(self.location)
 		return position
-
-	def to_markdown(self, heading_level='', exclude_datetime=False):
-		res = ''
-
-		position = self.get_position()
-		res += '%s### %s\n\n' % (heading_level, position)
-		
-		# add content
-		if self.content:
-			# process merged content
-			if type(self.content) is list:
-				# sort content by datetime
-				for mi, mc in enumerate(sorted(self.content, key=lambda el: el.datetime)):
-					# TODO merge identical or overlapping content
-					# produce quote blocks for each content '> [TYPE] CONTENT'
-					res += '>[%s] %s\n\n' % (mc.clip_type.title(), mc.content)
-					# add datetime
-					if not exclude_datetime:
-						# check if difference to next content is > 30 seconds
-						if (mi == len(self.content) - 1) or ((self.content[mi+1].datetime - mc.datetime) > datetime.timedelta(seconds=30)):
-							res += 'Added around %s.\n\n' % self.datetime
-			# standard procedure
-			else:
-				res += '> %s\n\n' % self.content
-				# add datetime
-				if not exclude_datetime:
-					res += 'Added on %s.\n\n' % self.datetime
-		return res
 
