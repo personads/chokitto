@@ -294,7 +294,7 @@ class PdfMergeExporter(Exporter):
 					# add textual annotation at top right point of the highlight
 					page.addTextAnnot(top_left, note.content)
 
-		return pdf_doc.write(clean=True, deflate=True)
+		return pdf_doc.write()
 
 	def write(self, documents, path):
 		# convert file and write to specified path
