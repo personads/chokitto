@@ -255,3 +255,37 @@ python chokitto.py path/to/clippings -e "json('%m.%d at %H:%M')"
 # omit the timestamp entirely
 python chokitto.py path/to/clippings -e "json('')"
 ```
+
+#### PDFMerger (Experimental)
+
+The PDFMergeExporter attempts to merge highlights and notes with a corresponding PDF document. This is especially useful for research papers.
+
+As this involves some more advanced PDF parsing, it requires the installation of the [MuPDF toolkit](https://mupdf.com/) as well as its [Python bindings](pymupdf.readthedocs.io/).
+
+```bash
+# install MuPDF using your package manager of choice, e.g.:
+brew install mupdf
+# then install the python binding using pip
+pip install PyMuPDF
+```
+
+**Experimental Caveats**
+
+* Only one document at a time can be merged, so please find it first using `-ls` and specify a filter `-f` which will only return the document in question.
+* Clippings from PDFs only provide vague locations, so matching highlights to the original document will work better the more specific the text is.
+* For the same reason it is difficult to match notes with the correct highlights. Chokitto will merge all potential matches so please remove the incorrect ones from the final output document.
+
+To use the PDFMerger, specify `pdfmerge` as the exporter `-e` along with the path to the original PDF document (e.g. the file on Kindle). Use filters `-f` to retrieve this single PDF's clippings. The output will be printed to standard output or to the file specified in `-o` (recommended).
+
+```bash
+# find the unique document title using -ls
+python chokitto.py path/to/clippings.txt -ls
+# the recommended method for merging clippings and PDFs
+python chokitto.py path/to/clippings.txt -v -m -f "title('pdf-title')" -e "pdfmerge('path/to/pdf-title.pdf')" -o path/to/output.pdf
+# for example, use the data from a connected Kindle
+python chokitto.py "/Volumes/Kindle/documents/My Clippings.txt" -v -m -f "title('pdf-title')" -e "pdfmerge('/Volumes/Kindle/documents/pdf-title.pdf')" -o path/to/output.pdf
+# or pipe the output directly to disk
+python chokitto.py path/to/clippings.txt -m -f "title('pdf-title')" -e "pdfmerge('path/to/pdf-title.pdf')" > path/to/output.pdf
+```
+
+The output will be the original PDF document plus highlights in yellow and corresponding text bubble style annotations.
