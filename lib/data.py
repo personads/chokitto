@@ -135,6 +135,9 @@ class Clipping:
 				subsumes_content = self.content in other.content
 			# this clipping subsumes the other iff it subsumes both range and content of the other
 			subsumes = subsumes and subsumes_content
+		# special case: bookmarks can only subsume or be subsumed by bookmarks
+		elif ('bookmark' in (clip_types | other_clip_types)) and ('bookmark' not in (clip_types & other_clip_types)):
+			return False
 
 		return subsumes
 
